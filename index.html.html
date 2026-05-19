@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>對獎查詢 - 2026藝家人融耀大雅</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        body { 
+            font-family: "Microsoft JhengHei", sans-serif; 
+            background-color: #f4f7f6; 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            min-height: 100vh;
+        }
+        .header {
+            background-color: #202124;
+            color: #fff;
+            width: 100%;
+            text-align: center;
+            padding: 20px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        .header h1 { margin: 0; font-size: 22px; font-weight: 900; letter-spacing: 1px; color: #ffeb3b; }
+        .header p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.8; }
+        
+        .container {
+            width: 90%;
+            max-width: 400px;
+            background: #fff;
+            border-radius: 15px;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+            padding: 30px 20px;
+            margin-top: 30px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        .instruction { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 20px; }
+        
+        input[type="number"] {
+            width: 100%;
+            font-size: 35px;
+            text-align: center;
+            padding: 15px;
+            border: 3px solid #1a73e8;
+            border-radius: 10px;
+            box-sizing: border-box;
+            font-weight: 900;
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+        }
+        
+        button {
+            width: 100%;
+            background-color: #1a73e8;
+            color: #fff;
+            border: none;
+            padding: 15px;
+            font-size: 22px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #1152a8;
+            transition: 0.1s;
+        }
+        button:active { transform: translateY(4px); box-shadow: none; }
+
+        .result-box {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 20px;
+            font-weight: bold;
+            line-height: 1.5;
+            display: none;
+            animation: popIn 0.3s ease-out;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .result-box.success { display: block; background-color: #e8f5e9; border: 3px solid #34a853; color: #1b5e20; }
+        .result-box.success .prize-name { font-size: 30px; color: #d32f2f; font-weight: 900; display: block; margin: 10px 0; }
+        .result-box.fail { display: block; background-color: #f1f3f4; border: 3px solid #9aa0a6; color: #5f6368; }
+        .result-box.warning { display: block; background-color: #fff8e1; border: 3px solid #fbc02d; color: #f57f17; }
+
+        .footer { margin-top: auto; padding: 20px; font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>✨ 2026藝家人融耀大雅 ✨</h1>
+        <p>市政宣導摸彩活動 - 快速對獎系統</p>
+    </div>
+
+    <div class="container">
+        <div class="instruction">請輸入您的摸彩券號碼<br><small>(例如：00123 請直接輸入 123 即可)</small></div>
+        
+        <input type="number" id="ticketNum" placeholder="輸入號碼">
+        
+        <button onclick="checkPrize()">🔍 立即查詢</button>
+
+        <div id="result" class="result-box"></div>
+    </div>
+
+    <div class="footer">
+        ※ 實際中獎與庫存狀態，以活動現場服務台廣播與核驗為準。
+    </div>
+
+<script>
+    // --- 您新專案的 Firebase 配置 ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyAEvorwT746EZfsidzc9J6z7cchQJsM6HE",
+      authDomain: "daya-1150606.firebaseapp.com",
+      databaseURL: "https://daya-1150606-default-rtdb.firebaseio.com",
+      projectId: "daya-1150606",
+      storageBucket: "daya-1150606.firebasestorage.app",
+      messagingSenderId: "579227935518",
+      appId: "1:579227935518:web:560e9865d73922214fdf0f"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // 查詢功能 (單次讀取，不佔用連線名額)
+    function checkPrize() {
+        const inputEl = document.getElementById('ticketNum');
+        let num = inputEl.value.trim();
+        
+        if(!num) {
+            alert("請輸入摸彩券號碼！");
+            return;
+        }
+
+        // 自動補齊5碼 (如果您現場的摸彩券是 00001 格式，且主機端也是輸入 00001 的話)
+        // 為了防呆，如果民眾輸入 123，系統會自動轉換成 00123 去雲端找
+        num = num.padStart(5, '0');
+        inputEl.value = num; // 將輸入框的數字更新為補齊後的格式讓民眾看
+
+        const resultDiv = document.getElementById('result');
+        resultDiv.className = 'result-box'; // 重置樣式
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = "📡 連線查詢中...";
+
+        // .get() 是「讀一次就斷開」的指令，專為大量民眾查詢設計
+        database.ref('winners/' + num).get().then((snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                
+                if (data.claimed) {
+                    // 如果已經被兌換台領走了
+                    resultDiv.className = 'result-box warning';
+                    resultDiv.innerHTML = `⚠️ 您的號碼 <b>${num}</b><br>已經兌換過 <span class="prize-name" style="font-size:22px; color:#f57f17;">【${data.prize}】</span> 請確認是否已由親友代領。`;
+                } else {
+                    // 中獎且尚未領取
+                    resultDiv.className = 'result-box success';
+                    resultDiv.innerHTML = `🎉 恭喜中獎！<br>您的號碼 <b>${num}</b> 抽中了：<span class="prize-name">【${data.prize}】</span>趕快截圖，前往服務台兌獎吧！`;
+                }
+            } else {
+                // 沒中獎
+                resultDiv.className = 'result-box fail';
+                resultDiv.innerHTML = `💦 號碼 <b>${num}</b> 目前未中獎。<br>請留意後續抽獎，祝您好運！`;
+            }
+        }).catch((error) => {
+            resultDiv.className = 'result-box fail';
+            resultDiv.innerHTML = "❌ 查詢失敗，請確認網路連線是否正常。";
+        });
+    }
+</script>
+
+</body>
+</html>
